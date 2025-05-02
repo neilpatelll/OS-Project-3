@@ -24,7 +24,7 @@ I expect the binary serialization to be tricky, especially ensuring that all the
 5. Test basic I/O operations
 
 
-# 2025-05-02 2:00pm
+# 2025-05-01 8:00pm
 
 ## Session Wrap-Up
 I've completed the foundational work for the B-tree implementation. Here's what I accomplished:
