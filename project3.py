@@ -186,6 +186,150 @@ def write_header(index_file, root, nxt):
         f.seek(0)
         f.write(data)
 
+def btree_search_key(cache: NodeCache, root_id: int, search_key: int):
+    if root_id == 0:
+        return None
+    node = cache.get_node(root_id)
+    i = 0
+    while i < node.num_keys and search_key > node.keys[i]:
+        i += 1
+    if i < node.num_keys and node.keys[i] == search_key:
+        return (node.keys[i], node.values[i])
+    if i < len(node.children) and node.children[i] != 0:
+        return btree_search_key(cache, node.children[i], search_key)
+    return None
+
+def btree_insert(cache: NodeCache, index_file: str, root_id: int, key: int, value: int):
+    if root_id == 0:
+        # create root
+        root_id = allocate_new_node(index_file)
+        root_node = cache.get_node(root_id)
+        root_node.keys     = [key]
+        root_node.values   = [value]
+        root_node.children = []
+        root_node.parent_id= 0
+        root_node.dirty    = True
+        cache.put_node(root_node)
+        return root_id
+
+    root_node = cache.get_node(root_id)
+    if root_node.num_keys == MAX_KEYS:
+        # split root
+        new_root_id = allocate_new_node(index_file)
+        new_root_node = cache.get_node(new_root_id)
+        new_root_node.keys     = []
+        new_root_node.values   = []
+        new_root_node.children = [root_id]
+        new_root_node.parent_id= 0
+        new_root_node.dirty    = True
+        root_node.parent_id    = new_root_id
+        root_node.dirty        = True
+        cache.put_node(root_node)
+
+        split_child(cache, index_file, new_root_node, 0)
+        insert_non_full(cache, index_file, new_root_node, key, value)
+        return new_root_id
+    else:
+        insert_non_full(cache, index_file, root_node, key, value)
+        return root_id
+
+def insert_non_full(cache: NodeCache, index_file: str, node: Node, key: int, value: int):
+    i = node.num_keys - 1
+    if node.is_leaf():
+        node.keys.append(0)
+        node.values.append(0)
+        while i >= 0 and key < node.keys[i]:
+            node.keys[i+1]   = node.keys[i]
+            node.values[i+1] = node.values[i]
+            i -= 1
+        node.keys[i+1]   = key
+        node.values[i+1] = value
+        node.dirty       = True
+        cache.put_node(node)
+    else:
+        while i >= 0 and key < node.keys[i]:
+            i -= 1
+        i += 1
+        child_id = node.children[i]
+        child = cache.get_node(child_id)
+        if child.num_keys == MAX_KEYS:
+            split_child(cache, index_file, node, i)
+            if key > node.keys[i]:
+                i += 1
+        child_id = node.children[i]
+        child = cache.get_node(child_id)
+        insert_non_full(cache, index_file, child, key, value)
+
+def split_child(cache: NodeCache, index_file: str, parent: Node, child_index: int):
+    """
+    Splits the parent's child at child_index (which is assumed full),
+    creating a new node for the top half. Moves the median key up into parent.
+    """
+    full_child_id = parent.children[child_index]
+    full_child = cache.get_node(full_child_id)
+
+    # Copy old arrays so we can safely slice after
+    old_keys     = full_child.keys
+    old_values   = full_child.values
+    old_children = full_child.children
+
+    new_node_id = allocate_new_node(index_file)
+    new_node = cache.get_node(new_node_id)
+    new_node.parent_id = parent.block_id
+
+    mid = T - 1  # 9 for T=10
+
+    # The median key to move up is old_keys[mid]
+    median_key = old_keys[mid]
+    median_val = old_values[mid]
+
+    # The new node gets keys from mid+1..end
+    new_node.keys   = old_keys[mid+1:]
+    new_node.values = old_values[mid+1:]
+
+    if not full_child.is_leaf():
+        new_node.children = old_children[mid+1:]
+        # fix each child's parent
+        for c_id in new_node.children:
+            if c_id != 0:
+                c_node = cache.get_node(c_id)
+                c_node.parent_id = new_node_id
+                c_node.dirty = True
+                cache.put_node(c_node)
+    else:
+        new_node.children = []
+
+    # Now shrink the original child to 0..(mid-1)
+    full_child.keys   = old_keys[:mid]
+    full_child.values = old_values[:mid]
+    if not full_child.is_leaf():
+        full_child.children = old_children[:mid+1]
+
+    full_child.dirty = True
+    new_node.dirty   = True
+    cache.put_node(full_child)
+    cache.put_node(new_node)
+
+    # Insert the median key in the parent
+    parent.keys.insert(child_index, median_key)
+    parent.values.insert(child_index, median_val)
+    parent.children.insert(child_index+1, new_node_id)
+
+    parent.dirty = True
+    cache.put_node(parent)
+
+def allocate_new_node(index_file: str) -> int:
+    root, nxt = read_header(index_file)
+    block_id = nxt
+    nxt += 1
+    write_header(index_file, root, nxt)
+
+    # Write a blank node with the correct block_id so it won't be 0 on read
+    node = Node(block_id)
+    node.dirty = True
+    write_node(index_file, node)
+    return block_id
+
 def main():
     print("B-tree index file utility - core structure implementation")
     print("Use this program to create, modify, and search B-tree index files.")

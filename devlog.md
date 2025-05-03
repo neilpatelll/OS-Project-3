@@ -53,3 +53,77 @@ For the next session, I'll implement the core B-tree operations:
 1. Search functionality to find keys
 2. Insert operations with node splitting
 3. Handle the special case of root node splitting
+
+
+# 2025-05-02 9:00am
+
+## Initial Thoughts
+Now that I have the foundational structure in place, it's time to implement the core B-tree operations. The most challenging aspects will be implementing node splits correctly and ensuring parent-child relationships are maintained during restructuring.
+
+## Goals for this Session
+1. Implement B-tree search functionality
+2. Add key insertion with node splitting
+3. Handle special case of root node splitting
+4. Properly update parent-child relationships during tree restructuring
+5. Allocate new nodes as needed
+
+## Implementation Details
+For search, I'll implement a recursive algorithm that follows the B-tree properties:
+- If key is found in the current node, return it
+- Otherwise, follow the appropriate child pointer based on key comparison
+
+For insertion, I'll need to:
+- Handle the case where the root node is full (create a new root)
+- Split full nodes when encountered
+- Insert into non-full nodes
+- Properly update parent-child relationships
+
+## Anticipated Challenges
+The splitting logic will be complex because it involves redistributing keys and updating parent pointers. I need to be especially careful with the edge cases, such as when the root splits or when a child being split has its own children.
+
+
+# 2025-05-02 11:30pm
+
+## Session Wrap-Up
+I've successfully implemented the core B-tree operations. Here's what I accomplished:
+
+1. Search functionality:
+   - Recursive search that follows B-tree properties
+   - Returns key-value pair when found, None otherwise
+   - Properly traverses the tree based on key comparisons
+
+2. Insertion logic:
+   - Created btree_insert to handle the top-level insertion
+   - Implemented insert_non_full for adding to non-full nodes
+   - Added split_child to handle node splitting when needed
+   - Added special handling for root splits
+
+3. Node allocation:
+   - Implemented allocate_new_node for obtaining new blocks
+   - Properly updates the header to track next available block
+
+I'm particularly happy with how the split_child function turned out. It correctly:
+- Identifies the median key to move up to the parent
+- Creates a new node for the right half of the split
+- Updates parent-child relationships throughout the restructuring
+- Handles both leaf and internal node splits
+
+## Challenges Encountered
+The biggest challenge was getting the split_child logic right. I needed to ensure all parent pointers were updated correctly, especially when splitting a non-leaf node. There were several edge cases to consider, such as:
+- Updating the parent pointers of all children in the new right node
+- Properly handling the insertion of the median key into the parent
+- Managing array slicing for redistributing keys, values, and children
+
+## Tests Performed
+I manually traced through the insertion logic for several cases:
+1. First insertion into an empty tree
+2. Multiple insertions into a single node
+3. Insertion that causes a leaf node split
+4. Insertion that causes multiple splits up to the root
+
+## Next Steps
+For the next session, I'll focus on:
+1. Creating the command-line interface
+2. Adding batch operations for loading data
+3. Implementing a traversal algorithm for printing the tree
+4. Adding data export functionality
