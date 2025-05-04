@@ -330,9 +330,173 @@ def allocate_new_node(index_file: str) -> int:
     write_node(index_file, node)
     return block_id
 
+def cmd_create(index_file: str):
+    if os.path.exists(index_file):
+        print(f"Error: index file '{index_file}' already exists.")
+        sys.exit(1)
+    init_header(index_file)
+    print(f"Index file '{index_file}' created.")
+
+def cmd_insert(index_file: str, key: int, value: int):
+    try:
+        root, nxt = read_header(index_file)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    cache = NodeCache(index_file)
+    new_root = btree_insert(cache, index_file, root, key, value)
+    if new_root != root:
+        write_header(index_file, new_root, nxt)
+    cache.flush_all()
+    print(f"Inserted key={key}, value={value} into '{index_file}'.")
+
+def cmd_search(index_file: str, key: int):
+    try:
+        root, nxt = read_header(index_file)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    cache = NodeCache(index_file)
+    res = btree_search_key(cache, root, key)
+    if res is None:
+        print(f"Key {key} not found in '{index_file}'.")
+    else:
+        k, v = res
+        print(f"Found key={k}, value={v}")
+
+def cmd_load(index_file: str, csv_file: str):
+    try:
+        root, nxt = read_header(index_file)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    if not os.path.exists(csv_file):
+        print(f"Error: CSV file '{csv_file}' not found.")
+        sys.exit(1)
+
+    cache = NodeCache(index_file)
+    cur_root = root
+    with open(csv_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(",")
+            if len(parts) != 2:
+                print(f"Error: invalid CSV line '{line}'")
+                sys.exit(1)
+            k = int(parts[0])
+            v = int(parts[1])
+            cur_root = btree_insert(cache, index_file, cur_root, k, v)
+
+    if cur_root != root:
+        write_header(index_file, cur_root, nxt)
+    cache.flush_all()
+    print(f"Loaded key/value pairs from '{csv_file}' into '{index_file}'.")
+
+def cmd_print(index_file: str):
+    try:
+        root, nxt = read_header(index_file)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    cache = NodeCache(index_file)
+    pairs = btree_traverse_inorder(cache, root)
+    for k,v in pairs:
+        print(f"{k} {v}")
+
+def btree_traverse_inorder(cache: NodeCache, node_id: int):
+    if node_id == 0:
+        return []
+    node = cache.get_node(node_id)
+    result = []
+    for i in range(node.num_keys):
+        if i < len(node.children) and node.children[i] != 0:
+            result.extend(btree_traverse_inorder(cache, node.children[i]))
+        result.append((node.keys[i], node.values[i]))
+    if len(node.children) > node.num_keys and node.children[node.num_keys] != 0:
+        result.extend(btree_traverse_inorder(cache, node.children[node.num_keys]))
+    return result
+
+def cmd_extract(index_file: str, out_csv: str):
+    if os.path.exists(out_csv):
+        print(f"Error: '{out_csv}' already exists.")
+        sys.exit(1)
+    try:
+        root, nxt = read_header(index_file)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    cache = NodeCache(index_file)
+    pairs = btree_traverse_inorder(cache, root)
+    with open(out_csv, "w") as f:
+        for k,v in pairs:
+            f.write(f"{k},{v}\n")
+    print(f"Extracted {len(pairs)} pairs to '{out_csv}'.")
+
 def main():
-    print("B-tree index file utility - core structure implementation")
-    print("Use this program to create, modify, and search B-tree index files.")
+    if len(sys.argv) < 2:
+        print("Usage:")
+        print("  project3 create <index_file>")
+        print("  project3 insert <index_file> <key> <value>")
+        print("  project3 search <index_file> <key>")
+        print("  project3 load <index_file> <csv_file>")
+        print("  project3 print <index_file>")
+        print("  project3 extract <index_file> <csv_file>")
+        sys.exit(1)
+
+    cmd = sys.argv[1].lower()
+
+    if cmd == "create":
+        if len(sys.argv) != 3:
+            print("Usage: project3 create <index_file>")
+            sys.exit(1)
+        cmd_create(sys.argv[2])
+
+    elif cmd == "insert":
+        if len(sys.argv) != 5:
+            print("Usage: project3 insert <index_file> <key> <value>")
+            sys.exit(1)
+        index_file = sys.argv[2]
+        key = int(sys.argv[3])
+        value = int(sys.argv[4])
+        cmd_insert(index_file, key, value)
+
+    elif cmd == "search":
+        if len(sys.argv) != 4:
+            print("Usage: project3 search <index_file> <key>")
+            sys.exit(1)
+        index_file = sys.argv[2]
+        key = int(sys.argv[3])
+        cmd_search(index_file, key)
+
+    elif cmd == "load":
+        if len(sys.argv) != 4:
+            print("Usage: project3 load <index_file> <csv_file>")
+            sys.exit(1)
+        index_file = sys.argv[2]
+        csv_file = sys.argv[3]
+        cmd_load(index_file, csv_file)
+
+    elif cmd == "print":
+        if len(sys.argv) != 3:
+            print("Usage: project3 print <index_file>")
+            sys.exit(1)
+        index_file = sys.argv[2]
+        cmd_print(index_file)
+
+    elif cmd == "extract":
+        if len(sys.argv) != 4:
+            print("Usage: project3 extract <index_file> <csv_file>")
+            sys.exit(1)
+        index_file = sys.argv[2]
+        out_csv = sys.argv[3]
+        cmd_extract(index_file, out_csv)
+
+    else:
+        print(f"Unknown command '{cmd}'")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
